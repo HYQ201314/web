@@ -3,284 +3,349 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎄 圣诞快乐 · Merry Christmas</title>
+<title>🎄 Merry Christmas · 粒子圣诞树</title>
 <style>
-  :root{
-    --red:#c62828; --deepred:#8e1b1b; --green:#1b5e20; --gold:#ffd54f;
-    --cream:#fff8e7; --night:#0a1a2f;
-  }
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    background:radial-gradient(ellipse at 50% 0%,#123a5e 0%,var(--night) 55%,#050d1a 100%);
-    color:var(--cream); overflow-x:hidden; min-height:100vh;
-    display:flex; flex-direction:column; align-items:center;
-  }
-  /* 星空粒子背景 */
-  #sky{position:fixed;inset:0;z-index:0;pointer-events:none}
-  .wrap{position:relative;z-index:1;width:100%;max-width:960px;padding:32px 20px 60px;text-align:center}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070d1c}
+  body{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  #stage{position:fixed;inset:0;display:block;width:100%;height:100%}
 
-  h1{
-    font-size:clamp(2rem,7vw,4rem);font-weight:800;letter-spacing:2px;
-    background:linear-gradient(90deg,#ffd54f,#ff8a80,#ffd54f);
+  /* 底部金色花体祝福 */
+  .greeting{
+    position:fixed;left:0;right:0;bottom:6%;text-align:center;
+    pointer-events:none;z-index:5;
+  }
+  .greeting .en{
+    font-family:"Brush Script MT","Segoe Script","Snell Roundhand",cursive;
+    font-size:clamp(2.2rem,7vw,5rem);font-weight:700;letter-spacing:2px;
+    background:linear-gradient(180deg,#fff6c8,#ffd54f 45%,#c8901f);
     -webkit-background-clip:text;background-clip:text;color:transparent;
-    text-shadow:0 0 30px rgba(255,213,79,.25);line-height:1.2;
+    text-shadow:0 0 24px rgba(255,200,80,.35);line-height:1.1;
+    font-style:italic;
   }
-  .sub{margin-top:8px;font-size:clamp(.95rem,2.6vw,1.2rem);color:#dbe7f5;letter-spacing:4px}
+  .greeting .cn{
+    margin-top:6px;font-family:"STKaiti","KaiTi",serif;
+    font-size:clamp(1.1rem,3vw,1.8rem);letter-spacing:10px;
+    color:#f6d98a;text-shadow:0 0 18px rgba(255,200,80,.4);
+  }
 
-  /* 圣诞树画布 */
-  .tree-box{position:relative;margin:10px auto 4px;width:100%;max-width:520px}
-  #tree{width:100%;height:auto;display:block;filter:drop-shadow(0 10px 30px rgba(0,0,0,.5))}
-
-  /* 控制条 */
-  .controls{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 26px}
+  /* 控制按钮 */
+  .controls{
+    position:fixed;top:18px;right:18px;z-index:10;
+    display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;
+  }
   .btn{
-    border:none;cursor:pointer;font-size:.95rem;font-weight:600;
-    padding:10px 20px;border-radius:999px;color:#fff;
-    background:linear-gradient(135deg,var(--green),#2e7d32);
-    box-shadow:0 6px 18px rgba(0,0,0,.3);transition:transform .15s,filter .15s;
+    border:1px solid rgba(255,213,79,.35);cursor:pointer;
+    font-size:.85rem;font-weight:600;padding:9px 16px;border-radius:999px;
+    color:#ffe9a8;background:rgba(20,30,50,.55);backdrop-filter:blur(6px);
+    box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .15s,background .15s;
   }
-  .btn:hover{transform:translateY(-2px);filter:brightness(1.12)}
-  .btn.red{background:linear-gradient(135deg,var(--red),#e53935)}
-  .btn.gold{background:linear-gradient(135deg,#b8860b,var(--gold));color:#3a2a00}
-
-  /* 视频卡片 */
-  .video-card{
-    margin:0 auto;max-width:640px;background:rgba(255,255,255,.06);
-    border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:14px;
-    box-shadow:0 20px 50px rgba(0,0,0,.4);backdrop-filter:blur(8px);
-  }
-  .video-card h2{font-size:1.15rem;margin-bottom:12px;color:var(--gold);letter-spacing:1px}
-  .video-frame{
-    position:relative;width:100%;aspect-ratio:9/16;max-height:70vh;
-    border-radius:14px;overflow:hidden;background:#000;
-  }
-  video{width:100%;height:100%;object-fit:cover;display:block}
-  .video-tip{font-size:.8rem;color:#a9bdd4;margin-top:10px}
-
-  footer{margin-top:34px;font-size:.9rem;color:#9fb3ca;line-height:1.8}
-  .heart{color:#ff6b6b}
-  @media(min-width:760px){
-    .stage{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
-    .video-frame{max-height:none}
+  .btn:hover{transform:translateY(-2px);background:rgba(40,55,85,.75)}
+  .hint{
+    position:fixed;top:18px;left:18px;z-index:10;
+    font-size:.78rem;color:rgba(220,232,248,.55);letter-spacing:1px;
   }
 </style>
 </head>
 <body>
-<canvas id="sky"></canvas>
+<canvas id="stage"></canvas>
 
-<div class="wrap">
-  <h1>🎄 Merry Christmas 🎄</h1>
-  <p class="sub">圣 诞 快 乐 · 愿 温 暖 与 你 相 伴</p>
+<div class="hint">✨ 粒子圣诞树 · Canvas 动态版</div>
+<div class="controls">
+  <button class="btn" id="btnPause">⏸ 暂停</button>
+  <button class="btn" id="btnFire">🎆 烟花</button>
+  <button class="btn" id="btnMusic">🎵 音乐</button>
+</div>
 
-  <div class="stage">
-    <!-- 圣诞树动画 -->
-    <div class="tree-box">
-      <canvas id="tree" width="520" height="560"></canvas>
-      <div class="controls">
-        <button class="btn" id="toggleTree">⏸ 暂停动画</button>
-        <button class="btn red" id="toggleSnow">❄ 飘雪开关</button>
-        <button class="btn gold" id="toggleMusic">🎵 背景音乐</button>
-      </div>
-    </div>
-
-    <!-- 在线视频 -->
-    <div class="video-card">
-      <h2>🎬 圣诞影像</h2>
-      <div class="video-frame">
-        <video id="xmasVideo" controls autoplay loop muted playsinline
-               poster="">
-          <source src="https://videos.pexels.com/video-files/6098619/6098619-hd_1080_1920_25fps.mp4" type="video/mp4">
-          您的浏览器不支持视频播放。
-        </video>
-      </div>
-      <p class="video-tip">视频来自 Pexels 免费素材 · 点击播放器可暂停/播放 · 若自动播放未生效，请点一下播放键 ▶</p>
-    </div>
-  </div>
-
-  <footer>
-    ✨ 愿这棵圣诞树为你点亮整个冬夜<br>
-    <span class="heart">❤</span> Merry Christmas and a Happy New Year <span class="heart">❤</span>
-  </footer>
+<div class="greeting">
+  <div class="en">Merry Christmas</div>
+  <div class="cn">圣诞快乐</div>
 </div>
 
 <script>
-/* ============ 星空飘雪背景 ============ */
-const sky = document.getElementById('sky');
-const sctx = sky.getContext('2d');
-let flakes = [], snowOn = true, skyRAF;
-function sizeSky(){
-  sky.width = innerWidth; sky.height = innerHeight;
-  flakes = Array.from({length: Math.min(160, Math.floor(innerWidth/8))}, () => ({
-    x: Math.random()*sky.width, y: Math.random()*sky.height,
-    r: Math.random()*2.2+0.6, s: Math.random()*0.8+0.25,
-    drift: Math.random()*1.4-0.7, o: Math.random()*0.6+0.3
-  }));
+/* ================= 画布与基础 ================= */
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+let W=0, H=0, DPR=1;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W*DPR; canvas.height = H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  buildScene();
 }
-function drawSky(){
-  sctx.clearRect(0,0,sky.width,sky.height);
-  if(snowOn){
-    for(const f of flakes){
-      f.y += f.s; f.x += f.drift*0.3;
-      if(f.y > sky.height+5){ f.y=-5; f.x=Math.random()*sky.width; }
-      if(f.x > sky.width+5) f.x=-5; if(f.x < -5) f.x=sky.width+5;
-      sctx.beginPath(); sctx.arc(f.x,f.y,f.r,0,Math.PI*2);
-      sctx.fillStyle = `rgba(255,255,255,${f.o})`; sctx.fill();
+addEventListener('resize', resize);
+
+/* 发光光点精灵：预渲染提升性能 */
+function makeGlow(color){
+  const s=64, c=document.createElement('canvas'); c.width=c.height=s;
+  const g=c.getContext('2d');
+  const rg=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  rg.addColorStop(0,'rgba(255,255,255,1)');
+  rg.addColorStop(.25,color);
+  rg.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=rg; g.fillRect(0,0,s,s);
+  return c;
+}
+const goldSprites=[
+  makeGlow('rgba(255,214,84,.95)'),
+  makeGlow('rgba(255,170,50,.95)'),
+  makeGlow('rgba(255,240,170,.95)'),
+  makeGlow('rgba(255,140,30,.9)')
+];
+const lampRGBA=['rgba(255,59,48,.95)','rgba(52,199,89,.95)','rgba(10,132,255,.95)','rgba(255,214,10,.95)','rgba(255,45,149,.95)','rgba(48,216,192,.95)'];
+const lampSprites2=lampRGBA.map(c=>makeGlow(c));
+
+/* ================= 场景数据 ================= */
+let treeParticles=[], lamps=[], stars=[], dust=[];
+let cx=0, baseY=0, topY=0, R=0, treeH=0;
+
+function buildScene(){
+  cx = W/2;
+  baseY = H*0.80;
+  topY  = H*0.22;
+  treeH = baseY - topY;
+  R = Math.min(W*0.42, treeH*0.95);
+
+  // —— 螺旋编织粒子（多层环，相邻层反向旋转形成编织）——
+  treeParticles=[];
+  const rings=18, perRing=Math.max(46, Math.round(R*0.55));
+  for(let i=0;i<rings;i++){
+    const t=i/(rings-1);                 // 0底 1顶
+    const ringY=baseY - t*treeH;
+    let ringR=R*Math.pow(1-t,0.92);
+    const dir=(i%2? 1:-1);
+    for(let j=0;j<perRing;j++){
+      treeParticles.push({
+        ry:ringY, rr:ringR,
+        a: (j/perRing)*Math.PI*2 + Math.random()*0.15,
+        spd: dir*(0.22+Math.random()*0.5)*(1.15-0.5*t),
+        sz: 1.6+Math.random()*2.4,
+        c: Math.floor(Math.random()*goldSprites.length),
+        ph: Math.random()*Math.PI*2,
+        bob: Math.random()*0.6+0.2
+      });
     }
   }
-  skyRAF = requestAnimationFrame(drawSky);
-}
-sizeSky(); drawSky();
-addEventListener('resize', sizeSky);
 
-/* ============ 圣诞树动画 ============ */
-const tree = document.getElementById('tree');
-const tctx = tree.getContext('2d');
-const W = tree.width, H = tree.height;
-let treeOn = true, treeRAF, frame = 0;
-
-// 彩灯：挂在树上的点（相对树冠三角形分布）
-const lights = [];
-function buildLights(){
-  lights.length = 0;
-  const cx = W/2, topY = 100, bottomY = 440;
-  // 沿三层三角形的边缘布置彩灯
-  const layers = [
-    {ty:110, by:250, hw:110},
-    {ty:200, by:350, hw:150},
-    {ty:290, by:450, hw:195}
-  ];
-  const palette = ['#ff5252','#ffd54f','#69f0ae','#40c4ff','#ff80ab'];
-  for(const L of layers){
-    const rows = 4;
-    for(let i=1;i<=rows;i++){
-      const y = L.ty + (L.by-L.ty)*(i/(rows+1));
-      const hw = L.hw*(i/(rows+1));
-      for(let side of [-1,1]){
-        lights.push({
-          x: cx + side*hw, y: y,
-          color: palette[Math.floor(Math.random()*palette.length)],
-          phase: Math.random()*Math.PI*2
-        });
-      }
-    }
-  }
-  // 底部装饰球
-  for(let i=0;i<7;i++){
-    lights.push({
-      x: cx-150+i*50, y: 452+Math.sin(i)*6,
-      color: palette[i%palette.length], phase: Math.random()*Math.PI*2
+  // —— 彩灯：在树形轮廓内随机分布 ——
+  lamps=[];
+  const lampCount=Math.round(220*(R/300+0.5));
+  for(let i=0;i<lampCount;i++){
+    const t=Math.random();
+    const y=baseY - t*treeH;
+    const maxR=R*Math.pow(1-t,0.92);
+    const f=0.15+Math.random()*0.85;
+    const a=Math.random()*Math.PI*2;
+    lamps.push({
+      x:cx+maxR*f*Math.cos(a),
+      y:y+maxR*f*0.28*Math.sin(a),
+      c:Math.floor(Math.random()*lampSprites2.length),
+      ph:Math.random()*Math.PI*2,
+      bs:2+Math.random()*4,
+      sz:2.2+Math.random()*2.6
     });
   }
-}
-buildLights();
 
-function drawTree(){
-  frame++;
-  tctx.clearRect(0,0,W,H);
-  const cx = W/2;
+  // —— 背景星点 ——
+  stars=Array.from({length:Math.min(220,Math.round(W*H/6000))},()=>({
+    x:Math.random()*W, y:Math.random()*H*0.9,
+    r:Math.random()*1.3+0.3, ph:Math.random()*Math.PI*2,
+    bs:0.5+Math.random()*1.5
+  }));
+  // —— 漂浮微光 ——
+  dust=Array.from({length:60},()=>({
+    x:Math.random()*W, y:Math.random()*H,
+    r:Math.random()*1.6+0.5, v:Math.random()*0.4+0.1,
+    drift:Math.random()*0.5-0.25
+  }));
+}
+
+/* ================= 烟花系统 ================= */
+let fireworks=[], fireOn=true, lastFire=0;
+function spawnFirework(){
+  const x=W*(0.12+Math.random()*0.76);
+  const y=H*(0.12+Math.random()*0.34);
+  const col=lampRGBA[Math.floor(Math.random()*lampRGBA.length)];
+  const n=48+Math.floor(Math.random()*30);
+  const burst=[];
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2;
+    const sp=Math.random()*3.2+0.8;
+    burst.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,col,
+                sz:Math.random()*2+1.4});
+  }
+  fireworks.push({parts:burst, core:{x,y}});
+}
+
+/* ================= 绘制 ================= */
+let running=true, time=0, last=performance.now();
+function frame(now){
+  const dt=Math.min((now-last)/16.67,3); last=now;
+  requestAnimationFrame(frame);
+  if(!running) return;
+  time+=dt*0.016;
+
+  // 背景渐变
+  const bg=ctx.createRadialGradient(W/2,H*0.35,0,W/2,H*0.5,Math.max(W,H)*0.8);
+  bg.addColorStop(0,'#0c1830'); bg.addColorStop(.5,'#070d1c'); bg.addColorStop(1,'#03050b');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // 星星
+  ctx.globalCompositeOperation='lighter';
+  for(const s of stars){
+    const tw=0.35+0.65*Math.abs(Math.sin(time*s.bs+s.ph));
+    ctx.globalAlpha=tw*0.8;
+    ctx.fillStyle='#cfe0ff';
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+  }
+  // 漂浮微光
+  for(const d of dust){
+    d.y+=d.v*dt; d.x+=d.drift*dt*0.3;
+    if(d.y>H+4){d.y=-4;d.x=Math.random()*W;}
+    ctx.globalAlpha=0.25+0.2*Math.sin(time+d.x);
+    ctx.drawImage(goldSprites[2],d.x-d.r*3,d.y-d.r*3,d.r*6,d.r*6);
+  }
+
+  // —— 树（呼吸脉冲缩放）——
+  const pulse=1+0.018*Math.sin(time*1.8);
+  ctx.save();
+  ctx.translate(cx,baseY); ctx.scale(pulse,pulse); ctx.translate(-cx,-baseY);
 
   // 树干
-  tctx.fillStyle = '#6d4c41';
-  tctx.fillRect(cx-18, 440, 36, 60);
+  ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle='#5b3a22';
+  ctx.fillRect(cx-R*0.045,baseY-6,R*0.09,26);
 
-  // 三层树冠
-  const layers = [
-    {ty:95,  by:255, hw:115},
-    {ty:185, by:355, hw:158},
-    {ty:275, by:460, hw:205}
-  ];
-  layers.forEach((L,idx)=>{
-    const grad = tctx.createLinearGradient(cx-L.hw,0,cx+L.hw,0);
-    grad.addColorStop(0,'#0e3d1f'); grad.addColorStop(.5,'#1b6b32'); grad.addColorStop(1,'#0e3d1f');
-    tctx.beginPath();
-    tctx.moveTo(cx, L.ty);
-    tctx.lineTo(cx-L.hw, L.by);
-    tctx.quadraticCurveTo(cx, L.by+18, cx+L.hw, L.by);
-    tctx.closePath();
-    tctx.fillStyle = grad; tctx.fill();
-    // 积雪高光
-    tctx.strokeStyle = 'rgba(255,255,255,.18)'; tctx.lineWidth=2; tctx.stroke();
-  });
-
-  // 顶部星星（闪烁）
-  const twinkle = 0.6 + 0.4*Math.sin(frame*0.08);
-  tctx.save();
-  tctx.translate(cx, 78); tctx.rotate(frame*0.01);
-  tctx.shadowColor = '#ffd54f'; tctx.shadowBlur = 25*twinkle;
-  drawStar(tctx, 0, 0, 5, 26, 11);
-  tctx.fillStyle = `rgba(255,213,79,${twinkle})`; tctx.fill();
-  tctx.restore();
-
-  // 彩灯闪烁
-  for(const l of lights){
-    const glow = 0.45 + 0.55*Math.abs(Math.sin(frame*0.05 + l.phase));
-    tctx.beginPath(); tctx.arc(l.x,l.y,5,0,Math.PI*2);
-    tctx.shadowColor = l.color; tctx.shadowBlur = 16*glow;
-    tctx.fillStyle = l.color; tctx.globalAlpha = glow; tctx.fill();
-    tctx.globalAlpha = 1; tctx.shadowBlur = 0;
+  ctx.globalCompositeOperation='lighter';
+  // 金色螺旋粒子
+  for(const p of treeParticles){
+    p.a+=p.spd*0.01*dt;
+    const bob=Math.sin(time*1.5+p.ph)*p.bob;
+    const x=cx+p.rr*Math.cos(p.a);
+    const y=p.ry+p.rr*0.28*Math.sin(p.a)+bob;
+    const tw=0.55+0.45*Math.sin(time*3+p.ph*2);
+    const s=p.sz*(2.6+tw);
+    ctx.globalAlpha=0.5+0.5*tw;
+    ctx.drawImage(goldSprites[p.c],x-s,y-s,s*2,s*2);
   }
-  // 地面雪堆
-  tctx.beginPath(); tctx.ellipse(cx,500,230,22,0,0,Math.PI*2);
-  tctx.fillStyle='rgba(255,255,255,.85)'; tctx.fill();
+  // 彩灯闪烁
+  for(const l of lamps){
+    const blink=Math.pow(Math.abs(Math.sin(time*l.bs+l.ph)),6);
+    const a=0.15+0.85*blink;
+    const s=l.sz*(1+blink*1.8);
+    ctx.globalAlpha=a;
+    ctx.drawImage(lampSprites2[l.c],l.x-s*2,l.y-s*2,s*4,s*4);
+  }
 
-  if(treeOn) treeRAF = requestAnimationFrame(drawTree);
+  // —— 顶部星芒 ——
+  const sx=cx, sy=topY-14;
+  const sp=0.75+0.25*Math.sin(time*4);
+  const glowR=70*sp;
+  ctx.globalAlpha=0.9;
+  ctx.drawImage(goldSprites[2],sx-glowR,sy-glowR,glowR*2,glowR*2);
+  ctx.drawImage(goldSprites[0],sx-26,sy-26,52,52);
+  // 十字 + 斜向光芒（缓慢旋转）
+  ctx.save();
+  ctx.translate(sx,sy); ctx.rotate(time*0.25);
+  for(let k=0;k<4;k++){
+    ctx.rotate(Math.PI/2);
+    const len=(70+30*Math.sin(time*3+k))*sp;
+    const g=ctx.createLinearGradient(0,0,0,-len);
+    g.addColorStop(0,'rgba(255,230,150,.85)');
+    g.addColorStop(1,'rgba(255,230,150,0)');
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.moveTo(-3,0); ctx.lineTo(0,-len); ctx.lineTo(3,0); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  // 五角星
+  ctx.globalAlpha=1;
+  drawStar(sx,sy,5,16,7,'rgba(255,244,200,.95)');
+
+  ctx.restore(); // 结束树缩放
+
+  // —— 烟花 ——
+  if(fireOn && now-lastFire>1700+Math.random()*1200){
+    spawnFirework(); lastFire=now;
+  }
+  for(let i=fireworks.length-1;i>=0;i--){
+    const fw=fireworks[i];
+    ctx.globalAlpha=0.9;
+    ctx.drawImage(goldSprites[0],fw.core.x-14,fw.core.y-14,28,28);
+    let alive=false;
+    for(const p of fw.parts){
+      p.x+=p.vx*dt; p.y+=p.vy*dt;
+      p.vy+=0.035*dt; p.vx*=0.985; p.vy*=0.985;
+      p.life-=0.012*dt;
+      if(p.life>0){
+        alive=true;
+        const s=p.sz*(1+p.life*2);
+        ctx.globalAlpha=Math.max(0,p.life);
+        // 用彩色圆点绘制烟花粒
+        ctx.fillStyle=p.col;
+        ctx.beginPath(); ctx.arc(p.x,p.y,s,0,Math.PI*2); ctx.fill();
+      }
+    }
+    if(!alive) fireworks.splice(i,1);
+  }
+
+  ctx.globalAlpha=1;
+  ctx.globalCompositeOperation='source-over';
 }
-function drawStar(ctx,cx,cy,spikes,outer,inner){
+
+function drawStar(cx,cy,spikes,outer,inner,fill){
   let rot=Math.PI/2*3, x=cx, y=cy, step=Math.PI/spikes;
   ctx.beginPath(); ctx.moveTo(cx,cy-outer);
   for(let i=0;i<spikes;i++){
     x=cx+Math.cos(rot)*outer; y=cy+Math.sin(rot)*outer; ctx.lineTo(x,y); rot+=step;
     x=cx+Math.cos(rot)*inner; y=cy+Math.sin(rot)*inner; ctx.lineTo(x,y); rot+=step;
   }
-  ctx.closePath();
+  ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
 }
-drawTree();
 
-/* ============ 控制按钮 ============ */
-document.getElementById('toggleTree').onclick = (e)=>{
-  treeOn = !treeOn;
-  e.target.textContent = treeOn ? '⏸ 暂停动画' : '▶ 继续动画';
-  if(treeOn) drawTree(); else cancelAnimationFrame(treeRAF);
+/* ================= 控制 ================= */
+document.getElementById('btnPause').onclick=(e)=>{
+  running=!running;
+  e.target.textContent=running?'⏸ 暂停':'▶ 继续';
+  last=performance.now();
 };
-document.getElementById('toggleSnow').onclick = (e)=>{
-  snowOn = !snowOn;
-  e.target.textContent = snowOn ? '❄ 飘雪开' : '🌙 飘雪关';
+document.getElementById('btnFire').onclick=(e)=>{
+  fireOn=!fireOn;
+  e.target.textContent=fireOn?'🎆 烟花开':'🎆 烟花关';
+  if(fireOn) spawnFirework();
 };
 
-/* ============ 简易背景音乐（Jingle Bells 片段，Web Audio 合成） ============ */
+/* 背景音乐：Web Audio 合成 Jingle Bells */
 let audioCtx=null, musicOn=false, musicTimer=null, noteIdx=0;
-const melody = [
-  [659,1],[659,1],[659,2],[659,1],[659,1],[659,2],
+const melody=[[659,1],[659,1],[659,2],[659,1],[659,1],[659,2],
   [659,1],[784,1],[523,1],[587,1],[659,4],
   [698,1],[698,1],[698,1],[698,1],[698,1],[659,1],[659,1],[659,1],
-  [659,1],[587,1],[587,1],[659,1],[587,2],[784,2]
-];
-function playNote(freq,dur){
+  [659,1],[587,1],[587,1],[659,1],[587,2],[784,2]];
+function playNote(f,d){
   const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type='triangle'; o.frequency.value=freq;
-  g.gain.setValueAtTime(0.0001,audioCtx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.12,audioCtx.currentTime+0.02);
-  g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur*0.28);
+  o.type='triangle'; o.frequency.value=f;
+  g.gain.setValueAtTime(.0001,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.1,audioCtx.currentTime+.02);
+  g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+d*.28);
   o.connect(g); g.connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+dur*0.3);
+  o.start(); o.stop(audioCtx.currentTime+d*.3);
 }
-function scheduleMusic(){
-  if(!musicOn) return;
+function schedule(){
+  if(!musicOn)return;
   const [f,d]=melody[noteIdx%melody.length];
   playNote(f,d); noteIdx++;
-  musicTimer=setTimeout(scheduleMusic, d*300);
+  musicTimer=setTimeout(schedule,d*300);
 }
-document.getElementById('toggleMusic').onclick = (e)=>{
-  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+document.getElementById('btnMusic').onclick=(e)=>{
+  if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   musicOn=!musicOn;
-  if(musicOn){ audioCtx.resume(); noteIdx=0; scheduleMusic(); e.target.textContent='🎵 音乐开'; }
-  else{ clearTimeout(musicTimer); e.target.textContent='🎵 背景音乐'; }
+  if(musicOn){audioCtx.resume();noteIdx=0;schedule();e.target.textContent='🎵 音乐开';}
+  else{clearTimeout(musicTimer);e.target.textContent='🎵 音乐';}
 };
 
-/* 页面离开时清理 */
-addEventListener('beforeunload',()=>{cancelAnimationFrame(treeRAF);cancelAnimationFrame(skyRAF);clearTimeout(musicTimer);});
+/* ================= 启动 ================= */
+resize();
+frame(performance.now());   // 同步绘制首帧，避免空白（frame 内部会继续注册 RAF）
 </script>
 </body>
 </html>
