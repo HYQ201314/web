@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>圣诞手势粒子交互 · Gesture Christmas</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#050302}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+       -webkit-user-select:none;user-select:none}
+  #scene{display:block;width:100%;height:100%}
+  #cam{position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none}
+  .hint{position:fixed;left:26px;top:24px;z-index:10;font-size:12px;letter-spacing:.1em;
+        color:rgba(255,190,130,.6);transition:color .3s}
+  .hint b{color:rgba(255,160,80,.95);font-weight:600}
+  .hud{position:fixed;right:24px;bottom:24px;z-index:10;display:flex;flex-direction:column;
+       align-items:flex-end;gap:8px}
+  .hud button{
+    background:rgba(28,15,8,.55);border:1px solid rgba(255,155,70,.28);color:#ffd9ad;
+    padding:8px 15px;border-radius:999px;font-size:12px;letter-spacing:.06em;cursor:pointer;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    transition:all .22s ease;font-family:inherit;
+  }
+  .hud button:hover{background:rgba(255,140,50,.18);border-color:rgba(255,170,80,.75);
+                    transform:translateX(-3px)}
+  .hud button:active{transform:scale(.95)}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<video id="cam" playsinline muted></video>
+<div class="hint" id="hint">初始化中 · <b>INITIALIZING</b></div>
+<div class="hud">
+  <button data-g="fist">✊ 握拳 · 重组圣诞树</button>
+  <button data-g="open">🖐 张开 · 炸裂光点</button>
+  <button data-g="ok">👌 OK · 弹出照片</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+'use strict';
+
+/* ============ 基础 ============ */
+const canvas  = document.getElementById('scene');
+const ctx     = canvas.getContext('2d', { alpha: false });
+const hintEl  = document.getElementById('hint');
+
+let W = 0, H = 0, DPR = 1;
+let cx = 0, cy = 0, treeH = 0, treeW = 0;
+let initialized = false;
+
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+
+function hash(i, s) {
+  const x = Math.sin(i * 12.9898 + s * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function roundRectPath(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y); c.arcTo(x + w, y, x + w, y + r, r);
+  c.lineTo(x + w, y + h - r); c.arcTo(x + w, y + h, x + w - r, y + h, r);
+  c.lineTo(x + r, y + h); c.arcTo(x, y + h, x, y + h - r, r);
+  c.lineTo(x, y + r); c.arcTo(x, y, x + r, y, r);
+  c.closePath();
+}
+
+/* ============ 粒子贴图 ============ */
+const PALETTE = ['#FFD98A', '#FFB547', '#FFF0C9', '#FF8A3D', '#FFE9B0', '#FF6B4A'];
+
+function makeSprite(color) {
+  const S = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g2 = c.getContext('2d');
+  const { r, g, b } = hexToRgb(color);
+  const grad = g2.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  grad.addColorStop(0,    'rgba(255,255,255,1)');
+  grad.addColorStop(0.18, `rgba(${r},${g},${b},1)`);
+  grad.addColorStop(0.45, `rgba(${r},${g},${b},0.42)`);
+  grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+  g2.fillStyle = grad;
+  g2.beginPath();
+  g2.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
+  g2.fill();
+  return c;
+}
+const SPRITES = PALETTE.map(makeSprite);
+
+/* ============ 粒子系统 ============ */
+const COUNT = 1000;
+const particles = [];
+
+(function initParticles() {
+  for (let i = 0; i < COUNT; i++) {
+    const rnd = hash(i, 7);
+    let ci = 0;
+    if (rnd < 0.55)      ci = 0;   // 金
+    else if (rnd < 0.78) ci = 1;   // 琥珀
+    else if (rnd < 0.90) ci = 2;   // 暖白
+    else if (rnd < 0.97) ci = 3;   // 橙
+    else                 ci = 5;   // 暖红
+
+    particles.push({
+      idx: i,
+      x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0,
+      ci,
+      size:  3.2 + hash(i, 11) * 6.2,
+      tw:    1.1 + hash(i, 13) * 3.6,
+      phase: hash(i, 17) * Math.PI * 2,
+      alpha: 0.50 + hash(i, 19) * 0.50
+    });
+  }
+})();
+
+/* ============ 圣诞树目标点（圆锥螺旋分布） ============ */
+function computeTreeTargets() {
+  const yBot = cy + treeH * 0.5;
+  const maxR = treeW * 0.5;
+  for (let i = 0; i < COUNT; i++) {
+    const p = particles[i];
+    const u = (i + 0.5) / COUNT;
+    const t = 1 - Math.sqrt(1 - u);              // 0 底部 → 1 顶部（底密顶疏）
+    const y = yBot - t * treeH;
+    const rr = maxR * (1 - t) * (0.30 + 0.70 * Math.sqrt(hash(i, 1)));
+    const a = i * 2.39996 + hash(i, 2) * 1.0;    // 黄金角螺旋
+    p.tx = cx + Math.cos(a) * rr;
+    p.ty = y + (hash(i, 3) - 0.5) * treeH * 0.03;
+  }
+}
+
+/* ============ 照片卡 ============ */
+const photos = [
+  { type: 'portrait', p: 0, v: 0, rot: -0.05, rect: { x: 0, y: 0, w: 0, h: 0 } },
+  { type: 'pet',      p: 0, v: 0, rot:  0.05, rect: { x: 0, y: 0, w: 0, h: 0 } }
+];
+let photoTarget = 0;
+
+/* ============ 状态机 ============ */
+let state = 'tree';
+let textAlpha = 1;
+let textAlphaTarget = 1;
+let time = 0;
+
+function setState(s) {
+  if (s === state) return;
+  const prev = state;
+  state = s;
+
+  if (s === 'burst') {
+    if (prev === 'tree') {                        // 只有从树炸开才给冲量
+      for (const p of particles) {
+        let dx = p.x - cx, dy = p.y - cy;
+        let d = Math.hypot(dx, dy);
+        if (d < 6) { const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); d = 1; }
+        const sp = 2.5 + hash(p.idx, 5) * 8.5;
+        p.vx += (dx / d) * sp + (Math.random() - 0.5) * 1.6;
+        p.vy += (dy / d) * sp + (Math.random() - 0.5) * 1.6;
+      }
+    }
+    photoTarget = 0;
+    textAlphaTarget = 0;
+  }
+
+  if (s === 'photos') { photoTarget = 1; textAlphaTarget = 0; }
+  if (s === 'tree')   { photoTarget = 0; textAlphaTarget = 1; }
+}
+
+function fire(g) {
+  if (g === 'open') {
+    if (state === 'tree' || state === 'photos') setState('burst');
+  } else if (g === 'ok') {
+    if (state === 'burst') setState('photos');
+  } else if (g === 'fist') {
+    if (state !== 'tree') setState('tree');
+  }
+}
+
+/* ============ 尺寸与布局 ============ */
+function layout() {
+  cx = W * 0.5;
+  cy = H * 0.5 - Math.min(H * 0.045, 34);
+  treeH = Math.min(H * 0.60, 540);
+  treeW = treeH * 0.64;
+
+  computeTreeTargets();
+
+  const cardW = clamp(W * 0.145, 96, 148);
+  const cardH = cardW * 1.30;
+  const gap   = cardW * 0.16;
+  const totalW = cardW * 2 + gap;
+  const leftX = cx - totalW / 2;
+  const topY  = cy - cardH * 0.52;
+
+  photos[0].rect = { x: leftX, y: topY, w: cardW, h: cardH };
+  photos[1].rect = { x: leftX + cardW + gap, y: topY, w: cardW, h: cardH };
+
+  if (!initialized) {
+    for (const p of particles) { p.x = p.tx; p.y = p.ty; }
+    initialized = true;
+  }
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  layout();
+}
+window.addEventListener('resize', resize);
+
+/* ============ 物理更新 ============ */
+function update(dt) {
+  const inTree = (state === 'tree');
+
+  // 照片弹性弹出
+  for (let i = 0; i < photos.length; i++) {
+    const ph = photos[i];
+    ph.v += (photoTarget - ph.p) * (0.11 - i * 0.015) * dt;
+    ph.v *= Math.pow(0.80, dt);
+    ph.p += ph.v * dt;
+  }
+
+  // 文字淡入淡出
+  textAlpha += (textAlphaTarget - textAlpha) * 0.07 * dt;
+
+  const dampTree = Math.pow(0.86, dt);
+  const dampFree = Math.pow(0.985, dt);
+
+  for (let i = 0; i < COUNT; i++) {
+    const p = particles[i];
+    if (inTree) {
+      p.vx += (p.tx - p.x) * 0.055 * dt;
+      p.vy += (p.ty - p.y) * 0.055 * dt;
+      p.vx *= dampTree; p.vy *= dampTree;
+    } else {
+      p.vx += (cx - p.x) * 0.00002 * dt;
+      p.vy += (cy - p.y) * 0.00002 * dt;
+      p.vx *= dampFree; p.vy *= dampFree;
+    }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+}
+
+/* ============ 渲染 ============ */
+function render() {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+
+  // 背景
+  const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.85);
+  bg.addColorStop(0,    '#21130a');
+  bg.addColorStop(0.35, '#120a06');
+  bg.addColorStop(1,    '#040202');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // 中心暖光
+  const glowA = 0.16 + clamp(photoTarget, 0, 1) * 0.16;
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, treeH * 0.9);
+  glow.addColorStop(0, `rgba(255,150,60,${glowA})`);
+  glow.addColorStop(1, 'rgba(255,120,30,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  drawTitle();
+  drawPhotos();
+  drawParticles();
+  drawHandPreview();
+}
+
+/* --- 标题 --- */
+function drawTitle() {
+  if (textAlpha < 0.01) return;
+  const txt = 'MERRY CHRISTMAS';
+  const fs = clamp(W * 0.026, 16, 32);
+
+  ctx.save();
+  ctx.globalAlpha = textAlpha;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `600 ${fs}px Georgia, "Times New Roman", serif`;
+
+  const spacing = fs * 0.30;
+  const widths = [];
+  let total = 0;
+  for (const ch of txt) {
+    const w = ctx.measureText(ch).width;
+    widths.push(w);
+    total += w + spacing;
+  }
+  total -= spacing;
+
+  const y = cy + treeH * 0.5 + fs * 2.2;
+  let x = cx - total / 2;
+
+  const grad = ctx.createLinearGradient(cx - total / 2, 0, cx + total / 2, 0);
+  grad.addColorStop(0,   '#FFE7B4');
+  grad.addColorStop(0.5, '#FFB547');
+  grad.addColorStop(1,   '#FF8A3D');
+
+  ctx.shadowColor = 'rgba(255,150,60,0.55)';
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = grad;
+
+  for (let i = 0; i < txt.length; i++) {
+    ctx.fillText(txt[i], x + widths[i] / 2, y);
+    x += widths[i] + spacing;
+  }
+  ctx.restore();
+}
+
+/* --- 照片卡 --- */
+function drawPhotos() {
+  for (let i = 0; i < photos.length; i++) {
+    const ph = photos[i];
+    const a = clamp(ph.p, 0, 1);
+    if (a < 0.01) continue;
+    const sc = 0.55 + 0.45 * clamp(ph.p, 0, 1.12);
+    drawCard(ph, a, sc);
+  }
+}
+
+function drawCard(ph, alpha, scale) {
+  const r = ph.rect;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
+  ctx.rotate(ph.rot);
+  ctx.scale(scale, scale);
+  ctx.translate(-r.w / 2, -r.h / 2);
+
+  // 橙色发光边框
+  ctx.shadowColor = 'rgba(255,130,40,0.9)';
+  ctx.shadowBlur = 34;
+  roundRectPath(ctx, 0, 0, r.w, r.h, 16);
+  const bg = ctx.createLinearGradient(0, 0, r.w, r.h);
+  bg.addColorStop(0,   '#FFC46B');
+  bg.addColorStop(0.5, '#FF8A2B');
+  bg.addColorStop(1,   '#FF5E1F');
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // 内图区
+  const pad = 6;
+  const iw = r.w - pad * 2, ih = r.h - pad * 2;
+  ctx.save();
+  roundRectPath(ctx, pad, pad, iw, ih, 11);
+  ctx.clip();
+
+  const g2 = ctx.createLinearGradient(0, pad, 0, pad + ih);
+  if (ph.type === 'portrait') {
+    g2.addColorStop(0, '#F7CFA0');
+    g2.addColorStop(1, '#7A3B1E');
+  } else {
+    g2.addColorStop(0, '#F2B87A');
+    g2.addColorStop(1, '#5E2A12');
+  }
+  ctx.fillStyle = g2;
+  ctx.fillRect(pad, pad, iw, ih);
+
+  if (ph.type === 'portrait') drawPortrait(pad, pad, iw, ih);
+  else                        drawPet(pad, pad, iw, ih);
+
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawPortrait(x0, y0, w, h) {
+  const mid = x0 + w / 2;
+  ctx.fillStyle = 'rgba(45,22,12,0.82)';
+  // 头
+  ctx.beginPath();
+  ctx.arc(mid, y0 + h * 0.34, h * 0.155, 0, Math.PI * 2);
+  ctx.fill();
+  // 肩
+  ctx.beginPath();
+  ctx.ellipse(mid, y0 + h * 0.98, w * 0.40, h * 0.44, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 高光
+  ctx.fillStyle = 'rgba(255,240,200,0.20)';
+  ctx.beginPath();
+  ctx.ellipse(x0 + w * 0.5, y0 + h * 0.20, w * 0.30, h * 0.10, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawPet(x0, y0, w, h) {
+  const mid = x0 + w / 2;
+  const hy = y0 + h * 0.56;
+  const hr = w * 0.19;
+  ctx.fillStyle = 'rgba(45,22,12,0.82)';
+
+  // 身体
+  ctx.beginPath();
+  ctx.ellipse(mid, y0 + h * 0.86, w * 0.32, h * 0.20, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 耳朵
+  ctx.beginPath();
+  ctx.moveTo(mid - hr * 0.85, hy - hr * 0.30);
+  ctx.lineTo(mid - hr * 1.05, hy - hr * 1.35);
+  ctx.lineTo(mid - hr * 0.05, hy - hr * 0.92);
+  ctx.closePath(); ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(mid + hr * 0.85, hy - hr * 0.30);
+  ctx.lineTo(mid + hr * 1.05, hy - hr * 1.35);
+  ctx.lineTo(mid + hr * 0.05, hy - hr * 0.92);
+  ctx.closePath(); ctx.fill();
+
+  // 头
+  ctx.beginPath();
+  ctx.arc(mid, hy, hr, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 眼睛
+  ctx.fillStyle = 'rgba(255,235,200,0.85)';
+  ctx.beginPath(); ctx.arc(mid - hr * 0.36, hy - hr * 0.10, hr * 0.11, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(mid + hr * 0.36, hy - hr * 0.10, hr * 0.11, 0, Math.PI * 2); ctx.fill();
+
+  // 高光
+  ctx.fillStyle = 'rgba(255,240,200,0.16)';
+  ctx.beginPath();
+  ctx.ellipse(x0 + w * 0.5, y0 + h * 0.18, w * 0.30, h * 0.09, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* --- 粒子 --- */
+function drawParticles() {
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < COUNT; i++) {
+    const p = particles[i];
+    const tw = 0.5 + 0.5 * Math.sin(time * p.tw + p.phase);
+    const a = p.alpha * (0.35 + 0.65 * tw);
+    if (a < 0.02) continue;
+    const s = p.size * (0.75 + 0.55 * tw);
+    ctx.globalAlpha = a;
+    ctx.drawImage(SPRITES[p.ci], p.x - s * 0.5, p.y - s * 0.5, s, s);
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* --- 手部骨架预览 --- */
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],
+  [0,17]
+];
+let handLandmarks = null;
+
+function drawHandPreview() {
+  const pw = 162, ph = 122;
+  const px = 24, py = H - ph - 24;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+
+  roundRectPath(ctx, px, py, pw, ph, 14);
+  ctx.fillStyle = 'rgba(22,12,6,0.55)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,150,70,0.25)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,180,110,0.65)';
+  ctx.font = '10px -apple-system, "PingFang SC", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('HAND  TRACKING', px + 13, py + 18);
+
+  ctx.save();
+  roundRectPath(ctx, px + 4, py + 24, pw - 8, ph - 30, 10);
+  ctx.clip();
+
+  if (handLandmarks) {
+    const iw = pw - 8 - 20, ih = ph - 30 - 20;
+    const map = (pt) => ({
+      x: px + 4 + 10 + (1 - pt.x) * iw,     // 镜像
+      y: py + 24 + 10 + pt.y * ih
+    });
+
+    ctx.strokeStyle = 'rgba(255,160,70,0.55)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (const [a, b] of HAND_CONNECTIONS) {
+      const pa = map(handLandmarks[a]);
+      const pb = map(handLandmarks[b]);
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = '#FFC46B';
+    for (const pt of handLandmarks) {
+      const m = map(pt);
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 2.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = 'rgba(255,170,100,0.28)';
+    ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('未检测到手部', px + pw / 2, py + ph / 2 + 4);
+  }
+
+  ctx.restore();
+  ctx.restore();
+}
+
+/* ============ 主循环 ============ */
+let lastT = performance.now();
+
+function loop(now) {
+  const dt = Math.min((now - lastT) / 16.667, 3);
+  lastT = now;
+  time += dt / 60;
+
+  update(dt);
+  render();
+
+  requestAnimationFrame(loop);
+}
+
+/* ============ 手势识别 ============ */
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function classify(lm) {
+  const w = lm[0];
+  const dr = (i) => dist(lm[i], w);
+  const ext = (tip, pip) => dr(tip) > dr(pip) * 1.12;
+
+  const iE = ext(8, 6), mE = ext(12, 10), rE = ext(16, 14), pE = ext(20, 18);
+  const okGap = dist(lm[4], lm[8]);
+
+  if (okGap < 0.075 && mE && rE && pE) return 'ok';      // 👌
+  if (iE && mE && rE && pE)           return 'open';    // 🖐
+  if (!iE && !mE && !rE && !pE)       return 'fist';    // ✊
+  return 'unknown';
+}
+
+let held = 'unknown', heldFrames = 0, fired = false;
+
+function feed(g) {
+  if (g !== held) { held = g; heldFrames = 1; fired = false; return; }
+  heldFrames++;
+  if (!fired && heldFrames >= 4 && g !== 'unknown') {
+    fired = true;
+    fire(g);
+  }
+}
+
+function onResults(res) {
+  const list = res.multiHandLandmarks;
+  if (list && list.length > 0) {
+    handLandmarks = list[0];
+    feed(classify(handLandmarks));
+  } else {
+    handLandmarks = null;
+    feed('unknown');
+  }
+}
+
+function setHint(html) { hintEl.innerHTML = html; }
+
+async function initCamera() {
+  const video = document.getElementById('cam');
+
+  if (typeof window.Hands === 'undefined' || typeof window.Camera === 'undefined') {
+    setHint('识别模块未加载 · <b>请用右下角按钮演示</b>');
+    return;
+  }
+
+  const hands = new window.Hands({
+    locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 0,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+  });
+  hands.onResults(onResults);
+
+  const camera = new window.Camera(video, {
+    onFrame: async () => {
+      try { await hands.send({ image: video }); } catch (e) {}
+    },
+    width: 640,
+    height: 480
+  });
+
+  try {
+    await camera.start();
+    setHint('手部识别已启动 · <b>GESTURE ACTIVE</b>');
+  } catch (e) {
+    setHint('摄像头不可用 · <b>请用右下角按钮演示</b>');
+  }
+}
+
+/* ============ 兜底交互 ============ */
+document.querySelectorAll('.hud button').forEach((btn) => {
+  btn.addEventListener('click', () => fire(btn.dataset.g));
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === '1') fire('fist');
+  else if (e.key === '2') fire('open');
+  else if (e.key === '3') fire('ok');
+});
+
+/* ============ 启动 ============ */
+resize();
+requestAnimationFrame(loop);
+initCamera();
+
+})();
+</script>
+</body>
+</html>
