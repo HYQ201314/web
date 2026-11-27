@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05030c">
+<title>生日快乐 · 星空粒子蛋糕</title>
+<style>
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; height:100%; overflow:hidden; background:#05030c; }
+  body{
+    font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+    min-height:100vh; min-height:100dvh;
+    display:flex; align-items:center; justify-content:center;
+    touch-action:manipulation;
+  }
+  #scene{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  /* 中央文案（粒子汇聚完成后浮现） */
+  .caption{
+    position:fixed; left:0; right:0; top:14%;
+    text-align:center; z-index:5; pointer-events:none;
+    opacity:0; transition:opacity 1s ease;
+  }
+  .caption.show{ opacity:1; }
+  .caption h1{
+    margin:0; font-size:clamp(1.6rem,7vw,2.6rem);
+    font-family:"STXingkai","华文行楷","Xingkai SC",cursive;
+    letter-spacing:.06em;
+    background:linear-gradient(180deg,#fff6cf,#ffcf7a 55%,#ff9bc4);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 10px rgba(255,200,120,.7)) drop-shadow(0 0 24px rgba(255,140,190,.5));
+  }
+  .caption p{
+    margin:.4em 0 0; font-size:clamp(.8rem,3.4vw,1.05rem);
+    letter-spacing:.25em; color:#ffd9e8;
+    text-shadow:0 0 10px rgba(255,160,210,.7);
+  }
+
+  /* 开始提示 */
+  .start-hint{
+    position:fixed; left:0; right:0; bottom:12%;
+    text-align:center; z-index:6; color:#ffe6a8;
+    font-size:clamp(.85rem,3.6vw,1rem); letter-spacing:.18em;
+    text-shadow:0 0 12px rgba(255,200,120,.8);
+    animation:breath 2.2s ease-in-out infinite; cursor:pointer;
+  }
+  @keyframes breath{ 0%,100%{ opacity:.35; } 50%{ opacity:1; } }
+  .start-hint.hide{ display:none; }
+
+  /* 音乐开关 */
+  .music-btn{
+    position:fixed; z-index:10;
+    top:calc(env(safe-area-inset-top,0px) + 14px); right:14px;
+    width:42px; height:42px; border-radius:50%;
+    border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.07);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    font-size:1.1rem; color:#ffe6a8; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  @media (prefers-reduced-motion:reduce){ *{ animation-duration:.01ms !important; } }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <button class="music-btn" id="musicBtn" aria-label="播放生日音乐">🔇</button>
+
+  <div class="caption" id="caption">
+    <h1>生日快乐</h1>
+    <p>Happy Birthday</p>
+  </div>
+
+  <div class="start-hint" id="startHint">轻点屏幕 · 开启星光 ✦</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+ *  星空粒子蛋糕 —— 纯 Canvas 2D 实现，零外部依赖
+ *  参考开源思路（Starlight Wish / 粒子汇聚 + 星环 + 烟花）独立重写
+ *  视觉流程：星尘漂浮 → 3/2/1 汇聚 → 立体粒子蛋糕 + 旋转星环 + 金色火焰 → 烟花
+ * ========================================================================= */
+
+var canvas = document.getElementById('scene');
+var ctx = canvas.getContext('2d');
+var W = 0, H = 0, DPR = 1, CX = 0, CY = 0, SCALE = 1;
+
+/* ---------- 可自定义配置 ---------- */
+var CONFIG = {
+  starCount: 260,          // 背景星尘数量
+  cakeParticles: 2600,     // 蛋糕粒子数量
+  ringParticles: 900,      // 星环粒子数量
+  cakeColors: ['#ff8fb8','#ffc4dc','#ffe0ec','#ff6fa5','#fff0f7'],
+  ringColors: ['#ffd86b','#fff3b0','#7ad7ff','#c9a7ff','#ffffff'],
+  flameColors: ['#fff3b0','#ffcc4d','#ff8a3d'],
+  candleOffsets: [0],            // 一根蜡烛，位于蛋糕顶面中央
+  wish: '生日快乐'
+};
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W*DPR); canvas.height = Math.round(H*DPR);
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  CX = W/2; CY = H/2;
+  SCALE = Math.min(W/420, H/760); // 适配竖屏
+}
+resize();
+window.addEventListener('resize', resize);
+
+/* ---------- 工具 ---------- */
+function rand(a,b){ return a + Math.random()*(b-a); }
+function pick(arr){ return arr[(Math.random()*arr.length)|0]; }
+
+/* ---------- 背景星尘 ---------- */
+var stars = [];
+for(var i=0;i<CONFIG.starCount;i++){
+  stars.push({
+    x:Math.random(), y:Math.random(),
+    r:rand(.4,1.7), a:rand(.2,.9),
+    ph:rand(0,Math.PI*2), sp:rand(.5,2),
+    hue:pick(['#ffffff','#ffe6a8','#ffc4dc','#bfe4ff'])
+  });
+}
+
+/* ---------- 蛋糕粒子目标点：由数学函数生成“立体双层蛋糕”轮廓 ---------- */
+// 目标坐标以蛋糕中心为原点（单位像素，再乘 SCALE）
+function buildCakeTargets(n){
+  var pts = [];
+
+  // 圆柱侧面
+  function side(r,y0,y1,cnt){
+    for(var i=0;i<cnt;i++){
+      var ang=Math.random()*Math.PI*2;
+      var px=Math.cos(ang)*r*rand(.97,1.03);
+      var pz=Math.sin(ang)*r*rand(.97,1.03);
+      var py=rand(y0,y1)+pz*0.18;
+      pts.push({tx:px,ty:py,tz:pz,color:pick(CONFIG.cakeColors),size:rand(1.1,2.4),ph:rand(0,6.28)});
+    }
+  }
+  // 圆柱顶面（透视椭圆）
+  function face(r,y,cnt){
+    for(var i=0;i<cnt;i++){
+      var ang=Math.random()*Math.PI*2;
+      var rr=Math.sqrt(Math.random())*r;
+      var px=Math.cos(ang)*rr, pz=Math.sin(ang)*rr;
+      pts.push({tx:px,ty:y+pz*0.18,tz:pz,color:pick(CONFIG.cakeColors),size:rand(1.1,2.2),ph:rand(0,6.28)});
+    }
+  }
+  // 奶油裙边：顶面边缘的波浪滴落
+  function cream(r,y,cnt){
+    for(var i=0;i<cnt;i++){
+      var ang=Math.random()*Math.PI*2;
+      var wave=Math.sin(ang*8)*3;
+      var px=Math.cos(ang)*(r+1.5), pz=Math.sin(ang)*(r+1.5);
+      var py=y+pz*0.18+wave+rand(0,5);
+      pts.push({tx:px,ty:py,tz:pz,color:pick(['#fff0f7','#ffd0e2','#ffb0cf']),size:rand(1.2,2.4),ph:rand(0,6.28)});
+    }
+  }
+
+  // --- 托盘：扁平椭圆盘面 + 盘沿 ---
+  var plateN=Math.floor(n*0.06);
+  for(var i=0;i<plateN;i++){
+    var ang=Math.random()*Math.PI*2;
+    var rr=Math.sqrt(Math.random())*140;
+    var px=Math.cos(ang)*rr, pz=Math.sin(ang)*rr;
+    var py=160+pz*0.24+rand(-2,2);
+    pts.push({tx:px,ty:py,tz:pz,color:pick(['#ffe0ec','#ffc4dc','#fff0f7','#ff9ec4']),size:rand(1.2,2.6),ph:rand(0,6.28)});
+  }
+  var rimN=Math.floor(n*0.03);
+  for(var i=0;i<rimN;i++){
+    var ang=Math.random()*Math.PI*2;
+    var px=Math.cos(ang)*140, pz=Math.sin(ang)*140;
+    var py=158+pz*0.24+rand(0,7);
+    pts.push({tx:px,ty:py,tz:pz,color:pick(['#ffc4dc','#ffe0ec']),size:rand(1.2,2.4),ph:rand(0,6.28)});
+  }
+
+  // --- 三层蛋糕体（侧面 + 顶面 + 奶油裙边）---
+  var layers=[
+    {r:118,y0:70, y1:152,portion:.34}, // 下层
+    {r:90, y0:10, y1:70, portion:.27}, // 中层
+    {r:60, y0:-42,y1:10, portion:.20}  // 上层
+  ];
+  for(var k=0;k<layers.length;k++){
+    var L=layers[k], base=Math.floor(n*L.portion);
+    side(L.r,L.y0,L.y1,Math.floor(base*.62));
+    face(L.r,L.y0,Math.floor(base*.22));
+    cream(L.r,L.y0,Math.floor(base*.16));
+  }
+
+  // --- 三根蜡烛：竖直圆柱 + 金色螺旋条纹 + 深色烛芯 ---
+  var offs=CONFIG.candleOffsets;
+  var perCandle=Math.floor(n*0.037);
+  for(var c=0;c<offs.length;c++){
+    for(var j=0;j<perCandle;j++){
+      var px=offs[c]+rand(-4,4);
+      var pz=rand(-4,4);
+      var py=rand(-100,-46)+pz*0.1;
+      var stripe=(Math.floor((py+100)/7)%2===0); // 螺旋条纹
+      pts.push({tx:px,ty:py,tz:pz,color:stripe?'#ff7fa8':'#fff3d0',size:rand(1.1,2),ph:rand(0,6.28),candle:true});
+    }
+    for(var j=0;j<14;j++){ // 烛芯
+      pts.push({tx:offs[c]+rand(-1.5,1.5),ty:rand(-105,-99),tz:rand(-1.5,1.5),color:'#6b4a2f',size:rand(.8,1.4),ph:rand(0,6.28),candle:true});
+    }
+  }
+  return pts;
+}
+
+/* ---------- 星环粒子目标：绕蛋糕的倾斜椭圆环 ---------- */
+function buildRingTargets(n){
+  var pts=[];
+  for(var i=0;i<n;i++){
+    var ang = (i/n)*Math.PI*2;
+    var R = rand(150,190);
+    pts.push({
+      ang:ang, R:R,
+      color:pick(CONFIG.ringColors),
+      size:rand(.8,2.2),
+      sp:rand(.5,1.1)*(Math.random()<.3?-1:1),
+      tilt:rand(-.12,.12), ph:rand(0,6.28)
+    });
+  }
+  return pts;
+}
+
+var cakePts = buildCakeTargets(CONFIG.cakeParticles);
+var ringPts = buildRingTargets(CONFIG.ringParticles);
+// 粒子当前位置（初始随机散布在屏幕四周，向目标汇聚）
+cakePts.forEach(function(p){
+  p.x = rand(0,W); p.y = rand(0,H);
+  p.vx=0; p.vy=0;
+});
+
+/* ---------- 火焰粒子：每根蜡烛一簇 ---------- */
+var flamePts=[];
+for(var c=0;c<CONFIG.candleOffsets.length;c++){
+  for(var f=0;f<60;f++){
+    flamePts.push({ ci:c, ox:rand(-6,6), oy:rand(0,26), r:rand(1,3.2), ph:rand(0,6.28), sp:rand(1,3) });
+  }
+}
+
+/* ---------- 烟花系统 ---------- */
+var sparks=[];
+function burst(x,y){
+  var n = 50 + (Math.random()*40|0);
+  var base = pick(['#ff4d6d','#ff9500','#ffd60a','#34c759','#00d4ff','#5b7cff','#bf5bff','#ff2d95']);
+  for(var i=0;i<n;i++){
+    var a = Math.PI*2*i/n + rand(-.1,.1);
+    var sp = rand(1.2,4.6);
+    sparks.push({
+      x:x,y:y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:1, decay:rand(.008,.018), size:rand(1,2.6),
+      color: Math.random()<.15?'#ffffff':base
+    });
+  }
+}
+
+/* ---------- 状态机 ---------- */
+var state='idle'; // idle -> countdown -> gather -> show
+var stateT=0;
+var countdownVal=3;
+var lastCount=-1;
+var startHint=document.getElementById('startHint');
+var caption=document.getElementById('caption');
+
+function start(){
+  if(state!=='idle') return;
+  startHint.classList.add('hide');
+  state='countdown'; stateT=performance.now(); lastCount=-1;
+  ensureAudio(); // 用户手势后初始化音频
+}
+
+startHint.addEventListener('click', start);
+canvas.addEventListener('click', function(){
+  if(state==='idle'){ start(); }
+  else if(state==='show'){ // 点击触发烟花
+    burst(rand(W*.15,W*.85), rand(H*.15,H*.5));
+    burst(rand(W*.15,W*.85), rand(H*.15,H*.5));
+  }
+});
+document.addEventListener('keydown', function(e){
+  if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(state==='idle') start(); else if(state==='show'){ burst(rand(W*.15,W*.85),rand(H*.2,H*.5)); } }
+});
+
+/* ---------- Web Audio 生日歌（经典旋律，零外部资源） ---------- */
+var audioCtx=null, playing=false, loopTimer=null, active=[];
+var BEAT=0.42;
+var melody=[
+  [392,.5],[392,.5],[440,1],[392,1],[523.25,1],[493.88,2],
+  [392,.5],[392,.5],[440,1],[392,1],[587.33,1],[523.25,2],
+  [392,.5],[392,.5],[783.99,1],[659.25,1],[523.25,1],[587.33,1],
+  [698.46,.5],[698.46,.5],[659.25,1],[523.25,1],[587.33,1],[523.25,2]
+];
+function ensureAudio(){
+  if(audioCtx) return;
+  var AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC) return;
+  audioCtx=new AC();
+}
+function note(freq,t,dur){
+  if(!audioCtx) return;
+  var o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(.0001,t);
+  g.gain.exponentialRampToValueAtTime(.11,t+.03);
+  g.gain.setValueAtTime(.11,t+dur*.7);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur*.98);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(t); o.stop(t+dur);
+  active.push(o);
+  o.onended=function(){ active=active.filter(function(n){return n!==o;}); try{o.disconnect();g.disconnect();}catch(e){} };
+}
+function schedule(){
+  if(!playing||!audioCtx) return;
+  var t=audioCtx.currentTime+.1;
+  melody.forEach(function(n){ note(n[0],t,n[1]*BEAT); t+=n[1]*BEAT; });
+  loopTimer=setTimeout(schedule,(t-audioCtx.currentTime+1.2)*1000);
+}
+var musicBtn=document.getElementById('musicBtn');
+musicBtn.addEventListener('click', function(e){
+  e.stopPropagation();
+  ensureAudio();
+  if(!playing){
+    if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+    playing=true; musicBtn.textContent='🎵'; schedule();
+  }else{
+    playing=false; clearTimeout(loopTimer);
+    active.forEach(function(o){try{o.stop();}catch(e){}}); active=[];
+    musicBtn.textContent='🔇';
+  }
+});
+document.addEventListener('visibilitychange', function(){
+  if(!audioCtx) return;
+  if(document.hidden){ clearTimeout(loopTimer); active.forEach(function(o){try{o.stop();}catch(e){}}); active=[]; }
+  else if(playing){ if(audioCtx.state==='suspended') audioCtx.resume(); schedule(); }
+});
+
+/* ---------- 主渲染循环 ---------- */
+function drawStars(t){
+  for(var i=0;i<stars.length;i++){
+    var s=stars[i];
+    var a = s.a*(.55+.45*Math.sin(t*0.001*s.sp+s.ph));
+    ctx.globalAlpha=a;
+    ctx.fillStyle=s.hue;
+    ctx.beginPath();
+    ctx.arc(s.x*W, s.y*H, s.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawCountdown(t){
+  var elapsed=(t-stateT)/1000;
+  var n=3-Math.floor(elapsed);
+  if(n<=0){
+    // 进入汇聚阶段
+    state='gather'; stateT=t;
+    return;
+  }
+  if(n!==lastCount){ lastCount=n; }
+  ctx.save();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  var frac = elapsed-Math.floor(elapsed); // 0..1
+  var scale = 1.6 - frac*0.6;
+  var alpha = 1-frac*0.5;
+  ctx.globalAlpha=alpha;
+  ctx.font = '900 '+(120*SCALE*scale)+'px system-ui, sans-serif';
+  var g=ctx.createLinearGradient(0,CY-60*SCALE,0,CY+60*SCALE);
+  g.addColorStop(0,'#fff3c4'); g.addColorStop(.5,'#ffcf7a'); g.addColorStop(1,'#ff9bc4');
+  ctx.fillStyle=g;
+  ctx.shadowColor='#ffca7a'; ctx.shadowBlur=30;
+  ctx.fillText(String(n), CX, CY);
+  ctx.restore();
+}
+
+function drawGather(t){
+  var elapsed=(t-stateT)/1000;
+  var dur=2.2;
+  var k=Math.min(1, elapsed/dur);
+  var ease=1-Math.pow(1-k,3); // easeOutCubic
+  // 粒子从初始位置飞向目标
+  for(var i=0;i<cakePts.length;i++){
+    var p=cakePts[i];
+    var tx=CX+p.tx*SCALE, ty=CY+30*SCALE+p.ty*SCALE;
+    p.x = p.x + (tx-p.x)*0.06;
+    p.y = p.y + (ty-p.y)*0.06;
+    ctx.globalAlpha=ease;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size*SCALE*(.6+.4*Math.sin(t*0.004+p.ph)),0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // 进度提示文字
+  if(k<1){
+    ctx.save();
+    ctx.globalAlpha=.6+.4*Math.sin(t*0.005);
+    ctx.fillStyle='#ffe6a8';
+    ctx.font=(15*SCALE)+'px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('✦ 星光正在汇聚 ✦', CX, H-90*SCALE);
+    ctx.restore();
+  }else{
+    state='show'; stateT=t;
+    caption.classList.add('show');
+    // 完成时放烟花
+    burst(CX, CY-140*SCALE);
+    setTimeout(function(){burst(CX-90*SCALE,CY-180*SCALE);},260);
+    setTimeout(function(){burst(CX+90*SCALE,CY-160*SCALE);},520);
+  }
+}
+
+function drawShow(t){
+  var rot=t*0.0004; // 星环旋转
+  // --- 星环（倾斜椭圆，绕蛋糕旋转） ---
+  for(var i=0;i<ringPts.length;i++){
+    var r=ringPts[i];
+    var ang=r.ang+rot*r.sp;
+    var rx=r.R*SCALE;
+    var ry=r.R*SCALE*0.32 + r.tilt*H;
+    var x=CX+Math.cos(ang)*rx;
+    var y=CY+30*SCALE+Math.sin(ang)*ry;
+    // 深度：后半环暗、前半环亮
+    var depth=(Math.sin(ang)+1)/2;
+    ctx.globalAlpha=.25+depth*.7;
+    ctx.fillStyle=r.color;
+    var sz=r.size*SCALE*(.7+depth*.6)*(0.8+0.2*Math.sin(t*0.005+r.ph));
+    ctx.beginPath(); ctx.arc(x,y,sz,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // --- 蛋糕粒子（轻微呼吸 + 闪烁） ---
+  for(var j=0;j<cakePts.length;j++){
+    var p=cakePts[j];
+    var tx=CX+p.tx*SCALE, ty=CY+30*SCALE+p.ty*SCALE;
+    ctx.globalAlpha=.75+.25*Math.sin(t*0.004+p.ph);
+    ctx.fillStyle=p.color;
+    var sz=p.size*SCALE*(.85+.15*Math.sin(t*0.006+p.ph));
+    ctx.beginPath(); ctx.arc(tx,ty,sz,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // --- 蜡烛火焰：每根蜡烛顶部一簇跳动光点 ---
+  var offs=CONFIG.candleOffsets;
+  var candleTopY=CY+30*SCALE-104*SCALE;
+  for(var f=0;f<flamePts.length;f++){
+    var fp=flamePts[f];
+    var fx=CX+offs[fp.ci]*SCALE;
+    var life=(t*0.001*fp.sp+fp.ph)%1;
+    var fy2=candleTopY - life*34*SCALE + fp.oy*SCALE*0.3;
+    var fx2=fx+fp.ox*SCALE+Math.sin(t*0.01+fp.ph)*3*SCALE;
+    ctx.globalAlpha=(1-life)*.9;
+    ctx.fillStyle=life<.45?'#fff3b0':(life<.75?'#ffcc4d':'#ff8a3d');
+    ctx.shadowColor='#ffb838'; ctx.shadowBlur=12;
+    ctx.beginPath(); ctx.arc(fx2,fy2,fp.r*SCALE*(1-life*.6),0,Math.PI*2); ctx.fill();
+  }
+  ctx.shadowBlur=0; ctx.globalAlpha=1;
+}
+
+function drawSparks(){
+  for(var i=sparks.length-1;i>=0;i--){
+    var s=sparks[i];
+    s.x+=s.vx; s.y+=s.vy;
+    s.vx*=.982; s.vy*=.982; s.vy+=.035;
+    s.life-=s.decay;
+    if(s.life<=0){ sparks.splice(i,1); continue; }
+    ctx.globalAlpha=Math.max(0,s.life);
+    ctx.fillStyle=s.color;
+    ctx.shadowColor=s.color; ctx.shadowBlur=10;
+    ctx.beginPath(); ctx.arc(s.x,s.y,Math.max(.4,s.size*(.4+s.life*.6)),0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0;
+  }
+  ctx.globalAlpha=1;
+}
+
+function loop(t){
+  ctx.clearRect(0,0,W,H);
+  // 深色渐变背景
+  var bg=ctx.createRadialGradient(CX,CY,0,CX,CY,Math.max(W,H)*.75);
+  bg.addColorStop(0,'#1a0f2e'); bg.addColorStop(.5,'#0c0719'); bg.addColorStop(1,'#05030c');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  drawStars(t);
+
+  if(state==='countdown') drawCountdown(t);
+  else if(state==='gather') drawGather(t);
+  else if(state==='show') drawShow(t);
+
+  drawSparks();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
